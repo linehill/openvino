@@ -179,7 +179,9 @@ std::shared_ptr<KernelString> KernelBaseOpenCL::GetKernelString(const std::strin
                 kernel_string->options += " -Dcl_intel_subgroup_local_block_io -DLOCAL_BLOCK_IO_SUPPORTED=1";
         }
 
-#if CL_TARGET_OPENCL_VERSION >= 200
+#if CL_TARGET_OPENCL_VERSION >= 300
+        kernel_string->options += " -cl-std=CL3.0";
+#elif CL_TARGET_OPENCL_VERSION >= 200
         kernel_string->options += " -cl-std=CL2.0";
 #endif
 
