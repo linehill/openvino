@@ -322,13 +322,17 @@ device_info init_device_info(const cl::Device& device, const cl::Context& contex
         info.num_ccs = std::max<uint32_t>(num_queues, info.num_ccs);
     }
 
-
 #ifdef ENABLE_ONEDNN_FOR_GPU
-    using namespace dnnl::impl::gpu::intel::jit;
-    ngen::HW hw = ngen::HW::Unknown;
-    ngen::Product product = {ngen::ProductFamily::Unknown, 0};
-    jit_generator<ngen::HW::Unknown>::detectHWInfo(context.get(), device.get(), hw, product);
-    info.arch = convert_ngen_arch(hw);
+    try {
+        using namespace dnnl::impl::gpu::intel::jit;
+        ngen::HW hw = ngen::HW::Unknown;
+        ngen::Product product = {ngen::ProductFamily::Unknown, 0};
+        jit_generator<ngen::HW::Unknown>::detectHWInfo(context.get(), device.get(), hw, product);
+        info.arch = convert_ngen_arch(hw);
+    } catch (std::exception& ex) {
+        // PoCL triggers a bad_elf exception at line 67 in findDeviceBinary().
+        info.arch = gpu_arch::unknown;
+    }
 #else  // ENABLE_ONEDNN_FOR_GPU
     info.arch = gpu_arch::unknown;
 #endif  // ENABLE_ONEDNN_FOR_GPU
