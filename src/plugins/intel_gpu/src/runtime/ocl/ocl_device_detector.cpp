@@ -180,6 +180,8 @@ std::map<std::string, device::ptr> ocl_device_detector::get_available_devices(vo
 }
 
 std::vector<device::ptr> ocl_device_detector::create_device_list() const {
+    // When true, put all devices into the same context per platform.
+    bool multi_dev_context = true;
     cl_uint num_platforms = 0;
     // Get number of platforms availible
     cl_int error_code = clGetPlatformIDs(0, NULL, &num_platforms);
@@ -187,11 +189,17 @@ std::vector<device::ptr> ocl_device_detector::create_device_list() const {
         return {};
     }
 
-    OPENVINO_ASSERT(error_code == CL_SUCCESS, create_device_error_msg, "[GPU] clGetPlatformIDs error code: ", std::to_string(error_code));
+    OPENVINO_ASSERT(error_code == CL_SUCCESS,
+                    create_device_error_msg,
+                    "[GPU] clGetPlatformIDs error code: ",
+                    std::to_string(error_code));
     // Get platform list
     std::vector<cl_platform_id> platform_ids(num_platforms);
     error_code = clGetPlatformIDs(num_platforms, platform_ids.data(), NULL);
-    OPENVINO_ASSERT(error_code == CL_SUCCESS, create_device_error_msg, "[GPU] clGetPlatformIDs error code: ", std::to_string(error_code));
+    OPENVINO_ASSERT(error_code == CL_SUCCESS,
+                    create_device_error_msg,
+                    "[GPU] clGetPlatformIDs error code: ",
+                    std::to_string(error_code));
 
     std::vector<device::ptr> supported_devices;
     for (auto& id : platform_ids) {
@@ -200,11 +208,20 @@ std::vector<device::ptr> ocl_device_detector::create_device_list() const {
         try {
             std::vector<cl::Device> devices;
             platform.getDevices(CL_DEVICE_TYPE_ALL, &devices);
-            for (auto& device : devices) {
-                if (!does_device_match_config(device))
-                    continue;
-                supported_devices.emplace_back(std::make_shared<ocl_device>(device, cl::Context(device), platform));
+            auto new_end = std::remove_if(devices.begin(), devices.end(), [](const cl::Device& candidate_device) -> bool {
+                return !does_device_match_config(candidate_device);
+            });
+            devices.erase(new_end, devices.end());
+
+            if (multi_dev_context) {
+                auto context = cl::Context(devices);
+                for (auto& device : devices)
+                    supported_devices.emplace_back(std::make_shared<ocl_device>(device, context, platform));
+                break;
             }
+
+            for (auto& device : devices)
+                supported_devices.emplace_back(std::make_shared<ocl_device>(device, cl::Context(device), platform));
         } catch (std::exception& ex) {
             GPU_DEBUG_LOG << "Devices query/creation failed for " << platform.getInfo<CL_PLATFORM_NAME>() << ": " << ex.what() << std::endl;
             GPU_DEBUG_LOG << "Platform is skipped" << std::endl;
