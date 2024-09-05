@@ -34,7 +34,8 @@ ov::hetero::InferRequest::InferRequest(const std::shared_ptr<const ov::hetero::C
         m_port_to_subrequest_idx[port] = submodel_idx;
     }
 
-    std::map<ov::Output<const ov::Node>, ov::SoPtr<ov::ITensor>> temp_tensor_map;
+    using InferReqPort = std::pair<IInferRequest*, const ov::Output<const ov::Node>>;
+    std::map<InferReqPort, std::vector<InferReqPort>> output_to_inputs_port_map;
     for (const auto& kvp : compiled_model->m_mapping_info._submodels_input_to_prev_output) {
         const auto& submodel_idx_in = kvp.first.first;
         const auto& port_idx_in = kvp.first.second;
@@ -42,16 +43,13 @@ ov::hetero::InferRequest::InferRequest(const std::shared_ptr<const ov::hetero::C
         const auto& port_idx_out = kvp.second.second;
 
         const auto& output_port = m_subrequests[submodel_idx_out]->get_compiled_model()->outputs()[port_idx_out];
-        const auto& output_tensor = m_subrequests[submodel_idx_out]->get_tensor(output_port);
-        if (temp_tensor_map.find(output_port) == temp_tensor_map.end()) {
-            temp_tensor_map[output_port] = {
-                ov::make_tensor(output_tensor->get_element_type(), output_tensor->get_shape()),
-                nullptr};
-        }
-        m_subrequests[submodel_idx_out]->set_tensor(output_port, temp_tensor_map[output_port]);
         const auto& input_port = m_subrequests[submodel_idx_in]->get_compiled_model()->inputs()[port_idx_in];
-        m_subrequests[submodel_idx_in]->set_tensor(input_port, temp_tensor_map[output_port]);
+        output_to_inputs_port_map[{m_subrequests[submodel_idx_out]._ptr.get(), output_port}].push_back(
+            {m_subrequests[submodel_idx_in]._ptr.get(), input_port});
     }
+
+    for (auto& kvp : output_to_inputs_port_map)
+        kvp.first.first->connect_ports(kvp.first.second, kvp.second);
 }
 
 ov::hetero::InferRequest::~InferRequest() = default;

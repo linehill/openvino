@@ -13,7 +13,8 @@
 namespace intel_npu {
 
 SyncInferRequest::SyncInferRequest(const std::shared_ptr<const ICompiledModel>& compiledModel)
-    : _compiledModel(compiledModel),
+    : ov::ISyncInferRequest(compiledModel),
+      _compiledModel(compiledModel),
       _metadata(compiledModel->get_network_metadata()) {
     OPENVINO_ASSERT(_compiledModel);
 

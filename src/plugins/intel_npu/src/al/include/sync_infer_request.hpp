@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "openvino/runtime/isync_infer_request.hpp"
+
 #include "intel_npu/al/icompiled_model.hpp"
 #include "intel_npu/al/icompiler.hpp"
 #include "openvino/runtime/iinfer_request.hpp"
@@ -20,7 +22,7 @@ namespace intel_npu {
  * inheritance. However, the interface exposed by that class forces some additional latency in several unfavorable
  * scenarios, thus a reimplementation was required.
  */
-class SyncInferRequest : public ov::IInferRequest {
+class SyncInferRequest : public ov::ISyncInferRequest {
 public:
     explicit SyncInferRequest(const std::shared_ptr<const ICompiledModel>& compiledModel);
 

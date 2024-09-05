@@ -108,6 +108,10 @@ public:
      */
     const std::shared_ptr<const ov::ICompiledModel>& get_compiled_model() const override;
 
+    void connect_ports(
+        const ov::Output<const ov::Node>& source_port,
+        std::vector<std::pair<IInferRequest*, const ov::Output<const ov::Node>>>& destination_ports) override;
+
 protected:
     struct FoundPort {
         size_t idx;

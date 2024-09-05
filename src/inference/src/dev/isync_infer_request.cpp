@@ -306,3 +306,23 @@ void ov::ISyncInferRequest::check_tensors() const {
         check_tensor(outputs[i], m_tensors.at(outputs[i].get_tensor_ptr()));
     }
 }
+
+void ov::ISyncInferRequest::connect_ports(
+    const ov::Output<const ov::Node>& source_port,
+    std::vector<std::pair<IInferRequest*, const ov::Output<const ov::Node>>>& destination_ports) {
+    OV_ITT_SCOPED_TASK(ov::itt::domains::Plugin, "connect_ports");
+
+    auto found_src_port = find_port(source_port);
+    OPENVINO_ASSERT(found_src_port.found() && found_src_port.is_output(), "The source_port is not an output port.");
+
+    // TODO: Check the destination ports are inputs.
+
+    auto output_tensor = get_tensor(source_port);
+    ov::SoPtr<ov::ITensor> new_tensor = {
+        ov::make_tensor(output_tensor->get_element_type(), output_tensor->get_shape()),
+        nullptr};
+
+    set_tensor(source_port, new_tensor);
+    for (auto& kvp : destination_ports)
+        kvp.first->set_tensor(kvp.second, new_tensor);
+}

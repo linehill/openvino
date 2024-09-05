@@ -24,6 +24,7 @@ namespace ov {
 
 class IAsyncInferRequest;
 class ICompiledModel;
+class IInferRequest;
 
 /**
  * @brief An internal API of inference request to be implemented by plugin
@@ -116,6 +117,16 @@ public:
      * @return vector of output ports
      */
     virtual const std::vector<ov::Output<const ov::Node>>& get_outputs() const = 0;
+
+    /**
+     * @brief Sets a common tensor for the given ports
+     *
+     * @param source_port Output port of this inference request.
+     * @param destination_ports Other inference requests and their input ports.
+     */
+    virtual void connect_ports(
+        const ov::Output<const ov::Node>& source_port,
+        std::vector<std::pair<IInferRequest*, const ov::Output<const ov::Node>>>& destination_ports) = 0;
 
 protected:
     /**

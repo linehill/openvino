@@ -154,6 +154,11 @@ public:
      */
     const std::vector<ov::Output<const ov::Node>>& get_outputs() const override;
 
+    void connect_ports(const ov::Output<const ov::Node>& source_port,
+                       std::vector<std::pair<IInferRequest*, const ov::Output<const ov::Node>>>& destination_ports) override {
+        m_sync_request->connect_ports(source_port, destination_ports);
+    }
+
 protected:
     using Stage = std::pair<std::shared_ptr<ov::threading::ITaskExecutor>, ov::threading::Task>;
     /**
