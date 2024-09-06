@@ -9,6 +9,7 @@
 
 #include "intel_gpu/primitives/kv_cache.hpp"
 #include "intel_gpu/plugin/usm_host_tensor.hpp"
+#include "intel_gpu/plugin/async_infer_request.hpp"
 #include "intel_gpu/plugin/sync_infer_request.hpp"
 #include "intel_gpu/plugin/remote_context.hpp"
 #include "intel_gpu/plugin/remote_tensor.hpp"
@@ -502,6 +503,27 @@ TensorWrapper SyncInferRequest::create_or_share_device_tensor(const TensorWrappe
     return { create_device_tensor(actual_memory_shape, element_type, need_lockable_mem), TensorOwner::PLUGIN };
 }
 
+TensorWrapper SyncInferRequest::create_cross_device_tensor(const std::string& internal_name,
+                                                           const ov::PartialShape& shape,
+                                                           ov::element::Type element_type) const {
+    // Could also use shared USM allocation but is it beneficial?
+    const TensorType tensor_type = TensorType::BT_BUF_INTERNAL;
+
+    auto actual_memory_shape = shape;
+    if (shape.is_dynamic()) {
+        actual_memory_shape =
+            predict_shape(internal_name,
+                          cldnn::layout(shape, element_type, cldnn::format::get_default_format(shape.size())),
+                          *m_shape_predictor);
+    }
+
+    return {std::make_shared<RemoteTensorImpl>(m_context,
+                                               get_tensor_shape(shape),
+                                               cldnn::element_type_to_data_type(element_type),
+                                               tensor_type),
+            TensorOwner::PLUGIN};
+}
+
 cldnn::event::ptr SyncInferRequest::copy_output_data(cldnn::memory::ptr src, const ov::ITensor& dst) const {
     OV_ITT_SCOPED_TASK(itt::domains::intel_gpu_plugin, "SyncInferRequest::copy_output_data");
     OPENVINO_ASSERT(src->count() <= dst.get_size(),
@@ -867,6 +889,66 @@ void SyncInferRequest::init_mappings() {
 
 bool SyncInferRequest::is_batched_input(const ov::Output<const ov::Node>& port) const {
     return m_batched_tensors.count(port.get_tensor_ptr()) > 0;
+}
+
+void SyncInferRequest::connect_ports(
+    const ov::Output<const ov::Node>& source_port,
+    std::vector<std::pair<IInferRequest*, const ov::Output<const ov::Node>>>& destination_ports) {
+    OV_ITT_SCOPED_TASK(itt::domains::intel_gpu_plugin, "SyncInferRequest::connect_ports");
+
+    auto host_fall_back = [&]() -> void {
+        ISyncInferRequest::connect_ports(source_port, destination_ports);
+    };
+
+    // Check we can create a tensor which all inference request can access. Currently, supported for OpenCL engines
+    // that use the same cl::Context.
+    if (m_context->get_engine().runtime_type() != cldnn::runtime_types::ocl)
+        return host_fall_back();
+    auto* this_eng_context = m_context->get_engine().get_user_context();
+
+    std::vector<SyncInferRequest*> plugin_infer_reqs;
+    for (auto& kvp : destination_ports) {
+        SyncInferRequest* other_ireq = nullptr;
+        if (auto* sync_infer_req = dynamic_cast<SyncInferRequest*>(kvp.first))
+            other_ireq = sync_infer_req;
+        else if (auto* async_infer_req = dynamic_cast<AsyncInferRequest*>(kvp.first))
+            other_ireq = async_infer_req->get_sync_infer_request();
+
+        if (!other_ireq)
+            return host_fall_back();
+
+        if (other_ireq->m_context->get_engine().runtime_type() != cldnn::runtime_types::ocl)
+            return host_fall_back();
+
+        auto* other_eng_context = other_ireq->m_context->get_engine().get_user_context();
+        if (other_eng_context != this_eng_context)
+            return host_fall_back();
+
+        plugin_infer_reqs.push_back(other_ireq);
+    }
+
+    // Use device supported type to avoid superfluous memory copies.
+    auto device_element_type = convert_to_supported_device_type(source_port.get_element_type());
+
+    size_t output_idx = find_port(source_port).idx;
+    std::string& internal_name = m_output_names_map.at(output_idx);
+    TensorWrapper new_tensor =
+        create_cross_device_tensor(internal_name, source_port.get_partial_shape(), device_element_type);
+
+    m_user_outputs[output_idx] = new_tensor;
+    m_plugin_outputs.erase(output_idx);  // Let prepare_output handle the tensor update.
+    ov::ISyncInferRequest::set_tensor(source_port, new_tensor.ptr);
+
+    for (unsigned i = 0, e = plugin_infer_reqs.size(); i != e; i++) {
+        auto* other_infer_req = plugin_infer_reqs[i];
+        auto& input_port = destination_ports[i].second;
+        size_t input_idx = other_infer_req->find_port(input_port).idx;
+
+        other_infer_req->m_user_inputs[input_idx] = new_tensor;
+        other_infer_req->m_plugin_inputs.erase(input_idx);  // Let prepare_input handle the tensor update.
+
+        other_infer_req->ov::ISyncInferRequest::set_tensor(input_port, new_tensor.ptr);
+    }
 }
 
 }  // namespace intel_gpu

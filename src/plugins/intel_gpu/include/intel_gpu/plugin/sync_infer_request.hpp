@@ -66,6 +66,10 @@ public:
 
     bool use_external_queue() const { return m_use_external_queue; }
 
+    void connect_ports(
+        const ov::Output<const ov::Node>& source_port,
+        std::vector<std::pair<IInferRequest*, const ov::Output<const ov::Node>>>& destination_ports) override;
+
 private:
     void check_tensors() const override;
 
@@ -105,6 +109,10 @@ private:
                                                 const ov::PartialShape& pshape,
                                                 ov::element::Type element_type,
                                                 bool need_lockable_mem) const;
+    TensorWrapper create_cross_device_tensor(const std::string& internal_name,
+                                             const ov::PartialShape& port_pshape,
+                                             ov::element::Type element_type) const;
+
     std::shared_ptr<ov::ITensor> reinterpret_device_tensor(std::shared_ptr<RemoteTensorImpl> tensor, const ov::Shape new_shape) const;
     std::shared_ptr<ov::ITensor> create_host_tensor(const ov::PartialShape& port_shape, const ov::element::Type& port_element_type) const;
     std::shared_ptr<ov::ITensor> create_device_tensor(const ov::PartialShape& pshape, ov::element::Type element_type, bool need_lockable_memory = false) const;

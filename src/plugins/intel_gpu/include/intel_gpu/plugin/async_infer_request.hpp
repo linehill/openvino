@@ -14,6 +14,7 @@ namespace intel_gpu {
 
 class AsyncInferRequest : public ov::IAsyncInferRequest {
 public:
+    friend ov::intel_gpu::SyncInferRequest;
     using Parent = ov::IAsyncInferRequest;
     AsyncInferRequest(const std::shared_ptr<SyncInferRequest>& infer_request,
                       const std::shared_ptr<ov::threading::ITaskExecutor>& task_executor,
@@ -25,6 +26,10 @@ public:
     void start_async() override;
 
 private:
+    SyncInferRequest* get_sync_infer_request() {
+        return m_infer_request.get();
+    }
+
     std::shared_ptr<SyncInferRequest> m_infer_request;
     std::shared_ptr<ov::threading::ITaskExecutor> m_wait_executor;
 };
