@@ -206,7 +206,9 @@ memory::ptr ocl_engine::allocate_memory(const layout& layout, allocation_type ty
 }
 
 memory::ptr ocl_engine::reinterpret_buffer(const memory& memory, const layout& new_layout) {
-    OPENVINO_ASSERT(memory.get_engine() == this, "[GPU] trying to reinterpret buffer allocated by a different engine");
+    auto mem_engine = dynamic_cast<ocl_engine*>(memory.get_engine());
+    OPENVINO_ASSERT(mem_engine && (mem_engine == this || mem_engine->get_cl_context() == this->get_cl_context()),
+                    "[GPU] trying to reinterpret buffer allocated by a different engine");
     OPENVINO_ASSERT(new_layout.format.is_image() == memory.get_layout().format.is_image(),
                     "[GPU] trying to reinterpret between image and non-image layouts. Current: ",
                     memory.get_layout().format.to_string(), " Target: ", new_layout.format.to_string());
@@ -279,7 +281,12 @@ memory::ptr ocl_engine::reinterpret_handle(const layout& new_layout, shared_mem_
 }
 
 bool ocl_engine::is_the_same_buffer(const memory& mem1, const memory& mem2) {
-    if (mem1.get_engine() != this || mem2.get_engine() != this)
+    auto* ocl_eng1 = dynamic_cast<ocl_engine*>(mem1.get_engine());
+    auto* ocl_eng2 = dynamic_cast<ocl_engine*>(mem2.get_engine());
+    bool same_cl_context = ocl_eng1 && ocl_eng2 && ocl_eng1->get_cl_context() == get_cl_context() &&
+                           ocl_eng2->get_cl_context() == get_cl_context();
+
+    if (!same_cl_context && (mem1.get_engine() != this || mem2.get_engine() != this))
         return false;
     if (mem1.get_allocation_type() != mem2.get_allocation_type())
         return false;
