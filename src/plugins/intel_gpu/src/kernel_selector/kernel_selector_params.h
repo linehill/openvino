@@ -14,6 +14,7 @@
 #include <vector>
 #include <utility>
 #include <bitset>
+#include <functional>
 
 namespace kernel_selector {
 using DataTensor = Tensor::DataTensor;
@@ -407,6 +408,11 @@ struct EngineInfo {
     std::string deviceId = "";
     std::string driverVersion = "";
     std::vector<size_t> supportedSimdSizes = {};
+
+    // Optional. target is nullptr if the target device does not provide defined built-in kernels (DBK).
+    // Arguments to the query are DBK ID and corresponding kernel attribute structure.
+    // Return value is cl_program which may be null/zero if the quaried DBK is not supported.
+    std::function<void*(uint64_t, const void*, const char*)> dbk_query;
 
     DeviceFeaturesKey get_supported_device_features_key() const;
 };

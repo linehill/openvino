@@ -197,7 +197,38 @@ bool get_imad_support(const cl::Device& device) {
     return false;
 }
 
-device_info init_device_info(const cl::Device& device, const cl::Context& context) {
+static std::function<void*(uint64_t, const void*, const char*)> get_dbk_query_functor(const cl::Device& device,
+                                                                                      const cl::Context& context,
+                                                                                      const cl::Platform& platform) {
+    std::function<void*(uint64_t, const void*, const char*)> result;
+
+    auto create_dbks_fn = (clCreateProgramWithDefinedBuiltInKernels_fn)clGetExtensionFunctionAddressForPlatform(
+        platform(),
+        "clCreateProgramWithDefinedBuiltInKernels");
+
+    if (!create_dbks_fn)  // Shouldn't happen but play safe.
+        return result;
+
+    result = [=](uint64_t dbk_id, const void* dbk_attributes, const char* entry_point) -> void* {
+        cl_int status;
+        cl_int device_status[1] = {0};
+        auto api_dbk_id = static_cast<BuiltinKernelId>(dbk_id);
+        const void* dbk_attrs[1] = {dbk_attributes};
+        cl_program program =
+            create_dbks_fn(context(), 1, &device(), 1, &api_dbk_id, &entry_point, dbk_attrs, device_status, &status);
+
+        // TODO: add debug print for error cases other than CL_UNSUPPORTED_DBK.
+
+        // Use null program to indicate unavailibility of the DBK.
+        assert(!program || (status == CL_SUCCESS && device_status[0] == CL_SUCCESS));
+
+        return program;
+    };
+
+    return result;
+}
+
+device_info init_device_info(const cl::Device& device, const cl::Context& context, const cl::Platform& platform) {
     device_info info = {};
     info.vendor_id = static_cast<uint32_t>(device.getInfo<CL_DEVICE_VENDOR_ID>());
     info.dev_name = device.getInfo<CL_DEVICE_NAME>();
@@ -337,6 +368,9 @@ device_info init_device_info(const cl::Device& device, const cl::Context& contex
     info.arch = gpu_arch::unknown;
 #endif  // ENABLE_ONEDNN_FOR_GPU
 
+    if (extensions.find("cl_exp_defined_builtin_kernels") != std::string::npos)
+      info.dbk_query = get_dbk_query_functor(device, context, platform);
+
     return info;
 }
 
@@ -372,7 +406,7 @@ ocl_device::ocl_device(const cl::Device dev, const cl::Context& ctx, const cl::P
 : _context(ctx)
 , _device(dev)
 , _platform(platform)
-, _info(init_device_info(dev, ctx))
+, _info(init_device_info(dev, ctx, platform))
 , _mem_caps(init_memory_caps(dev, _info)) { }
 
 bool ocl_device::is_same(const device::ptr other) {

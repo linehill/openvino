@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 #include <tuple>
+#include <functional>
 
 namespace cldnn {
 /// @addtogroup cpp_api C++ API
@@ -98,6 +99,12 @@ struct device_info {
 
     ov::device::UUID uuid;                      ///< UUID of the gpu device
     ov::device::LUID luid;                      ///< LUID of the gpu device
+
+    /// A function for querying defined built-in kernel support. This
+    /// is optional indicated by target() and operator bool() members.
+    /// Arguments to the query are DBK ID and the corresponding kernel attribute structure.
+    /// Return value is cl_program which may be null/zero if the quaried DBK is not supported.
+    std::function<void*(uint64_t, const void*, const char*)> dbk_query;
 };
 
 /// @}

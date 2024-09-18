@@ -90,3 +90,7 @@ CL_HPP_PARAM_NAME_INFO_1_1_DEPRECATED_IN_2_0_(CL_HPP_DECLARE_PARAM_TRAITS_)
 #elif defined __GNUC__
     #pragma GCC diagnostic pop
 #endif
+
+// Temporarily added until these have been upstreamed.
+#include <CL/cl_exp_tensor.h>
+#include <CL/cl_exp_defined_builtin_kernels.h>

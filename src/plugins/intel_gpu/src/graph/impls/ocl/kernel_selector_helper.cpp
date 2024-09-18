@@ -1137,6 +1137,7 @@ void set_params(const kernel_impl_params& param_info, kernel_selector::params& p
     params.engineInfo.vendor_id = device_info.vendor_id;
     params.engineInfo.ip_version = device_info.ip_version;
     params.engineInfo.arch = kernel_selector::gpu_arch(static_cast<std::underlying_type<gpu_arch>::type>(device_info.arch));
+    params.engineInfo.dbk_query = device_info.dbk_query;
 
     auto impl_forcing = config.get_property(ov::intel_gpu::force_implementations);
 
