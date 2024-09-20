@@ -7,6 +7,7 @@
 #include "gemm_kernel_tiled_opt.h"
 #include "gemm_kernel_mmad_int8.h"
 #include "gemm_kernel_mmad_int8_slm.h"
+#include "gemm_kernel_dbk.h"
 
 namespace kernel_selector {
 gemm_kernel_selector::gemm_kernel_selector() {
@@ -14,6 +15,7 @@ gemm_kernel_selector::gemm_kernel_selector() {
     Attach<GemmKernelTiledOpt>();
     Attach<GemmKernelMMADint8>();
     Attach<GemmKernelMMADslmInt8>();
+    Attach<GemmKernelDBK>();
 }
 
 KernelsData gemm_kernel_selector::GetBestKernels(const Params& params) const {
