@@ -59,6 +59,7 @@ public:
         bool dump_custom_program;
         bool has_microkernels;
         std::map<std::string, std::pair<kernel_impl_params, size_t>> entry_point_to_id;
+        std::vector<std::shared_ptr<_cl_program>> defined_builtin_kernels;
 
         explicit batch_program(int32_t _bucket_id, int32_t _batch_id, std::string _options, const std::map<std::string, std::string>& batch_headers)
             : bucket_id(_bucket_id),

@@ -100,6 +100,11 @@ std::string kernels_cache::get_cache_path() const {
 }
 
 bool kernels_cache::is_cache_enabled() const {
+    // Temporarily disable due to DBKs for which hash computation not implemented yet. Also, reading binaries of the
+    // built DBKs and loading them probably is not implemented yet.
+    // TODO: disable the cache only for DBK programs.
+    return false;
+
     if (!_config.get_property(ov::intel_gpu::allow_new_shape_infer) &&
         (_config.get_property(ov::cache_mode) == ov::CacheMode::OPTIMIZE_SPEED)) {
         return false;
@@ -120,6 +125,10 @@ void kernels_cache::get_program_source(const kernels_code& kernels_source_code, 
     OV_ITT_SCOPED_TASK(ov::intel_gpu::itt::domains::intel_gpu_plugin, "KernelsCache::BuildAll::GetProgramSource");
     std::map<std::string, std::tuple<int32_t, std::vector<batch_program>>> program_buckets;
 
+    bool current_batch_has_dbks = false;
+    // Suppress false positive [-Werror=unused-but-set-variable] (g++ 11.4.0). The variable is used in the  following
+    // loop.
+    (void)current_batch_has_dbks;
     for (const auto& k : kernels_source_code) {
         auto& code = k.second;
         bool dump_custom_program = code.dump_custom_program;
@@ -176,11 +185,18 @@ void kernels_cache::get_program_source(const kernels_code& kernels_source_code, 
                 return false;
             };
 
+            // DBKs needs to be built apart from application defined programs as linking them together is not
+            // supported (yet?).
+            // Note: this method and build_batch() assumes that there are no application defined programs in the
+            // same kernel_string/batch.
+            bool has_dbks = kernel_string->builtin_kernels.size();
+
             // Create new kernels batch when the limit is reached
             // and current kernel's entry_point is duplicated in this kernels batch
-            if (current_bucket.back().kernels_counter >= get_max_kernels_per_batch()
-                || current_bucket.back().entry_point_to_id.find(entry_point) != current_bucket.back().entry_point_to_id.end()
-                || need_separate_batch(entry_point)) {
+            if (current_bucket.back().kernels_counter >= get_max_kernels_per_batch() ||
+                current_bucket.back().entry_point_to_id.find(entry_point) !=
+                    current_bucket.back().entry_point_to_id.end() ||
+                need_separate_batch(entry_point) || has_dbks) {
                 const auto& batch_id = static_cast<int32_t>(current_bucket.size());
                 current_bucket.push_back(batch_program(bucket_id, batch_id, options, batch_headers));
             }
@@ -190,16 +206,20 @@ void kernels_cache::get_program_source(const kernels_code& kernels_source_code, 
             current_batch.entry_point_to_id.emplace(entry_point, std::make_pair(code.params, kernel_part_idx));
 
             current_batch.has_microkernels |= kernel_string->has_microkernels;
+            for (auto dbk : kernel_string->builtin_kernels)
+                current_batch.defined_builtin_kernels.push_back(std::static_pointer_cast<_cl_program>(dbk));
 
             // TODO: Technically, microkernels doesn't require specific headers, but we don't want to include
             // some headers to all batches as it may lead to compilation error on some driver versions.
             // Need to generalize work with headers to include only necessary parts
             if (current_batch.has_microkernels) {
+                assert(!has_dbks);  // DBKs + microkernels probably won't work.
                 current_batch.source.insert(current_batch.source.begin(), current_batch.micro_headers.begin(), current_batch.micro_headers.end());
             }
 
             current_batch.source.push_back(std::move(full_code));
             current_batch.kernels_counter++;
+            current_batch_has_dbks = has_dbks;
         }
     }
 
@@ -305,11 +325,27 @@ void kernels_cache::build_batch(const engine& build_engine, const batch_program&
 
         // Run compilation
         if (precompiled_kernels.empty()) {
-            cl::Program program(cl_build_engine.get_cl_context(), batch.source);
-            {
-                OV_ITT_SCOPED_TASK(ov::intel_gpu::itt::domains::intel_gpu_plugin, "KernelsCache::BuildProgram::RunCompilation");
-                if (program.build({cl_build_engine.get_cl_device()}, batch.options.c_str()) != CL_SUCCESS)
-                    throw std::runtime_error("Failed in building program.");
+            cl::Program program;
+            if (batch.defined_builtin_kernels.size()) {
+                // DBK programs are already created by the kernel selector.
+                assert(batch.defined_builtin_kernels.size() == 1);
+                cl::Program program_with_dbks(batch.defined_builtin_kernels[0].get(), /*retain=*/true);
+                {
+                    OV_ITT_SCOPED_TASK(ov::intel_gpu::itt::domains::intel_gpu_plugin,
+                                       "KernelsCache::BuildProgram::RunCompilation");
+                    if (program_with_dbks.build({cl_build_engine.get_cl_device()}) != CL_SUCCESS)
+                        throw std::runtime_error("Failed in building program.");
+                    program = program_with_dbks;
+                }
+            } else {
+                cl::Program program_from_sources(cl_build_engine.get_cl_context(), batch.source);
+                {
+                    OV_ITT_SCOPED_TASK(ov::intel_gpu::itt::domains::intel_gpu_plugin,
+                                       "KernelsCache::BuildProgram::RunCompilation");
+                    if (program_from_sources.build({cl_build_engine.get_cl_device()}, batch.options.c_str()) != CL_SUCCESS)
+                        throw std::runtime_error("Failed in building program.");
+                }
+                program = program_from_sources;
             }
 
             if (dump_sources && dump_file.good()) {
@@ -369,7 +405,7 @@ void kernels_cache::build_batch(const engine& build_engine, const batch_program&
                        _kernel_batch_hash[params] = batch.hash_value;
                     }
                 } else {
-                    throw std::runtime_error("Could not find entry point");
+                    throw std::runtime_error("Could not find entry point '" + entry_point +"'");
                 }
             }
         }
