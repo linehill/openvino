@@ -64,6 +64,14 @@ target_include_directories(${TARGET_NAME} PUBLIC $<BUILD_INTERFACE:${INCLUDE_DIR
                                                  $<BUILD_INTERFACE:${CODEGEN_INCDIR}>
                                           PRIVATE $<TARGET_PROPERTY:rapidjson,INTERFACE_INCLUDE_DIRECTORIES>)
 
+
+if (INTEL_GPU_POCL_HEADERS)
+  target_include_directories(${TARGET_NAME} PUBLIC
+    $<BUILD_INTERFACE:${INTEL_GPU_POCL_HEADERS}>)
+else()
+  message(FATAL_ERROR "Experimental DBK feature needs INTEL_GPU_POCL_HEADERS set to location hosting tensor and DBK headers.")
+endif()
+
 target_compile_options(${TARGET_NAME} PRIVATE
   $<$<CONFIG:Release>:$<IF:$<CXX_COMPILER_ID:MSVC>,/Os,-Os>>)
 
