@@ -236,7 +236,6 @@ KernelsData GemmKernelDBK::GetKernelsData(const Params& params) const {
     kernel.params.workGroups.global = std::vector<size_t>(2, 1);
     kernel.params.arguments = GetArgsDesc(static_cast<uint32_t>(gmm_params.inputs.size()), false, false, 0, 1, false);
 
-    std::cerr << "XXX selected gemm-dbk\n";  // DEBUG
     return {k_data};
 }
 

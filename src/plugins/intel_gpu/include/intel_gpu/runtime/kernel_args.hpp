@@ -124,7 +124,7 @@ struct kernel_string {
     bool has_microkernels;
 
     // For the OpenCL engine the pointee is cl_program. (not exposed
-    // because headers and include paths needs to be worker out).
+    // because headers and include paths needs to be worked out).
     std::vector<std::shared_ptr<void>> builtin_kernels;
 
     kernel_string() : str(""), jit(""), undefs(""), options(""), entry_point(""), batch_compilation(false), has_microkernels(false) {}
