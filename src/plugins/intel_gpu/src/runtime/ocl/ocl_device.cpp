@@ -202,9 +202,9 @@ static std::function<void*(uint64_t, const void*, const char*)> get_dbk_query_fu
                                                                                       const cl::Platform& platform) {
     std::function<void*(uint64_t, const void*, const char*)> result;
 
-    auto create_dbks_fn = (clCreateProgramWithDefinedBuiltInKernels_fn)clGetExtensionFunctionAddressForPlatform(
+    auto create_dbks_fn = (clCreateProgramWithDefinedBuiltInKernelsEXP_fn)clGetExtensionFunctionAddressForPlatform(
         platform(),
-        "clCreateProgramWithDefinedBuiltInKernels");
+        "clCreateProgramWithDefinedBuiltInKernelsEXP");
 
     if (!create_dbks_fn)  // Shouldn't happen but play safe.
         return result;
@@ -212,7 +212,7 @@ static std::function<void*(uint64_t, const void*, const char*)> get_dbk_query_fu
     result = [=](uint64_t dbk_id, const void* dbk_attributes, const char* entry_point) -> void* {
         cl_int status;
         cl_int device_status[1] = {0};
-        auto api_dbk_id = static_cast<BuiltinKernelId>(dbk_id);
+        auto api_dbk_id = static_cast<cl_dbk_id_exp>(dbk_id);
         const void* dbk_attrs[1] = {dbk_attributes};
         cl_program program =
             create_dbks_fn(context(), 1, &device(), 1, &api_dbk_id, &entry_point, dbk_attrs, device_status, &status);

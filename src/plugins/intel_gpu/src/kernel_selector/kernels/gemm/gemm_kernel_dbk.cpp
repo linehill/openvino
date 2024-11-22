@@ -74,7 +74,7 @@ KernelsPriority GemmKernelDBK::GetKernelsPriority(const Params& /*params*/) cons
 }
 
 // TODO: move these to an own file.
-static cl_tensor_datatype translate_to_opencl(Datatype type) {
+static cl_tensor_datatype_exp translate_to_opencl(Datatype type) {
     switch (type) {
     default:
         assert(!"Missing/unrecognized Datatype!");
@@ -83,57 +83,57 @@ static cl_tensor_datatype translate_to_opencl(Datatype type) {
         return CL_TENSOR_DTYPE_UNKNOWN;
 
     case Datatype::UINT4:
-        return CL_TENSOR_DTYPE_UINT4;
+        return CL_TENSOR_DTYPE_UINT4_EXP;
     case Datatype::INT4:
-        return CL_TENSOR_DTYPE_INT4;
+        return CL_TENSOR_DTYPE_INT4_EXP;
     case Datatype::INT8:
-        return CL_TENSOR_DTYPE_INT8;
+        return CL_TENSOR_DTYPE_INT8_EXP;
     case Datatype::UINT8:
-        return CL_TENSOR_DTYPE_UINT8;
+        return CL_TENSOR_DTYPE_UINT8_EXP;
     case Datatype::INT16:
-        return CL_TENSOR_DTYPE_INT16;
+        return CL_TENSOR_DTYPE_INT16_EXP;
     case Datatype::UINT16:
-        return CL_TENSOR_DTYPE_UINT16;
+        return CL_TENSOR_DTYPE_UINT16_EXP;
     case Datatype::INT32:
-        return CL_TENSOR_DTYPE_INT32;
+        return CL_TENSOR_DTYPE_INT32_EXP;
     case Datatype::UINT32:
-        return CL_TENSOR_DTYPE_UINT32;
+        return CL_TENSOR_DTYPE_UINT32_EXP;
     case Datatype::INT64:
-        return CL_TENSOR_DTYPE_INT64;
+        return CL_TENSOR_DTYPE_INT64_EXP;
     case Datatype::F16:
-        return CL_TENSOR_DTYPE_FP16;
+        return CL_TENSOR_DTYPE_FP16_EXP;
     case Datatype::F32:
-        return CL_TENSOR_DTYPE_FP32;
+        return CL_TENSOR_DTYPE_FP32_EXP;
     }
     assert(!"Unreachable!");
     return CL_TENSOR_DTYPE_UNKNOWN;
 }
 
-static cl_tensor_dim translate_to_opencl(const Tensor::Dim& dim) {
+static cl_tensor_dim_exp translate_to_opencl(const Tensor::Dim& dim) {
     assert(!dim.pad.before && !dim.pad.after && !dim.pad.is_dynamic);
     assert(!dim.is_dynamic);
     return dim.v;
 }
 
-static void get_opencl_shape(const DataTensor& tensor, unsigned effective_rank, cl_tensor_shape* shape_out) {
+static void get_opencl_shape(const DataTensor& tensor, unsigned effective_rank, cl_tensor_shape_exp* shape_out) {
     assert(tensor.GetLayout() == DataLayout::bfyx && "TODO: OV->OpenCL tensor translation for other datalayouts");
 
     for (unsigned i = 0; i < effective_rank; i++)
         shape_out[i] = translate_to_opencl(tensor.GetDims().at(effective_rank - i - 1));
 }
 
-static std::unique_ptr<cl_tensor_layout_blas> translate_to_blas_layout(const DataLayout& layout,
-                                                                       unsigned target_rank,
-                                                                       const cl_tensor_shape* shape) {
+static std::unique_ptr<cl_tensor_layout_blas_exp> translate_to_blas_layout(const DataLayout& layout,
+                                                                           unsigned target_rank,
+                                                                           const cl_tensor_shape_exp* shape) {
     assert(target_rank);
-    auto ocl_layout = std::unique_ptr<cl_tensor_layout_blas>(new cl_tensor_layout_blas);
+    auto ocl_layout = std::unique_ptr<cl_tensor_layout_blas_exp>(new cl_tensor_layout_blas_exp);
 
     switch (layout) {
     default:
         assert(!"Unrecognized or blocked layout!");
         return nullptr;
     case DataLayout::bfyx: {
-        cl_tensor_dim dim_offset = 4 - target_rank;
+        cl_tensor_dim_exp dim_offset = 4 - target_rank;
         ocl_layout->leading_dims[0] = 3 - dim_offset;
         ocl_layout->leading_dims[1] = 2 - dim_offset;
         ocl_layout->leading_dims[2] = 1 - dim_offset;
@@ -143,28 +143,28 @@ static std::unique_ptr<cl_tensor_layout_blas> translate_to_blas_layout(const Dat
     }
 
     // Fill strides. This assumes that the tensor is densely packed.
-    size_t prev_stride = 1;
-    for (unsigned i = 0; i < target_rank; i++)
-        ocl_layout->leading_strides[i] = prev_stride = prev_stride * shape[ocl_layout->leading_dims[i]];
+    // size_t prev_stride = 1;
+    // for (unsigned i = 0; i < target_rank; i++)
+    //     ocl_layout->leading_strides[i] = prev_stride = prev_stride * shape[ocl_layout->leading_dims[i]];
 
     return ocl_layout;
 }
 
-static std::tuple<cl_tensor_desc, std::unique_ptr<cl_tensor_layout_blas>> translate_for_gemm_dbk(
+static std::tuple<cl_tensor_desc_exp, std::unique_ptr<cl_tensor_layout_blas_exp>> translate_for_gemm_dbk(
     const DataTensor& cldnn_tensor) {
     // GemmKernelDBK::Validate() ensures that tensor shape is [1, 1, ..., 1, A, B, C] at most.
     unsigned effective_rank = std::min<unsigned>(cldnn_tensor.Dimentions(), 3u);
 
-    cl_tensor_desc desc;
+    cl_tensor_desc_exp desc;
     desc.rank = effective_rank;
     desc.properties[0] = 0;
-    assert(desc.rank < CL_MEM_MAX_TENSOR_RANK);
+    assert(desc.rank < CL_MEM_MAX_TENSOR_RANK_EXP);
     get_opencl_shape(cldnn_tensor, effective_rank, desc.shape);
     desc.dtype = translate_to_opencl(cldnn_tensor.GetDType());
 
     auto layout_uptr = translate_to_blas_layout(cldnn_tensor.GetLayout(), effective_rank, desc.shape);
 
-    desc.layout_type = CL_TENSOR_LAYOUT_BLAS;
+    desc.layout_type = CL_TENSOR_LAYOUT_BLAS_EXP;
     desc.layout = layout_uptr.get();
 
     return std::make_tuple(desc, std::move(layout_uptr));
@@ -185,18 +185,18 @@ KernelsData GemmKernelDBK::GetKernelsData(const Params& params) const {
 
     auto& kernel = k_data.kernels[0];
 
-    cl_tensor_desc lhs_tensor;
-    cl_tensor_desc rhs_tensor;
-    cl_tensor_desc out_tensor;
-    std::unique_ptr<cl_tensor_layout_blas> lhs_layout;
-    std::unique_ptr<cl_tensor_layout_blas> rhs_layout;
-    std::unique_ptr<cl_tensor_layout_blas> out_layout;
+    cl_tensor_desc_exp lhs_tensor;
+    cl_tensor_desc_exp rhs_tensor;
+    cl_tensor_desc_exp out_tensor;
+    std::unique_ptr<cl_tensor_layout_blas_exp> lhs_layout;
+    std::unique_ptr<cl_tensor_layout_blas_exp> rhs_layout;
+    std::unique_ptr<cl_tensor_layout_blas_exp> out_layout;
 
     std::tie(lhs_tensor, lhs_layout) = translate_for_gemm_dbk(gmm_params.inputs[0]);
     std::tie(rhs_tensor, rhs_layout) = translate_for_gemm_dbk(gmm_params.inputs[1]);
     std::tie(out_tensor, out_layout) = translate_for_gemm_dbk(gmm_params.outputs[0]);
 
-    cl_dbk_attributes_exp_matmul matmul_desc =
+    cl_dbk_attributes_matmul_exp matmul_desc =
         {lhs_tensor, rhs_tensor, out_tensor, gmm_params.transpose_input0, gmm_params.transpose_input1, {}};
 
     // This loads intermediate binaries that needs building.
@@ -205,7 +205,7 @@ KernelsData GemmKernelDBK::GetKernelsData(const Params& params) const {
         return {};
     }
 
-    void* raw_program = params.engineInfo.dbk_query(POCL_CDBI_DBK_EXP_MATMUL, &matmul_desc, entry_point.c_str());
+    void* raw_program = params.engineInfo.dbk_query(CL_DBK_MATMUL_EXP, &matmul_desc, entry_point.c_str());
     if (!raw_program) {
         GPU_DEBUG_LOG << "Rejected gemm-dbk: either unsupported or there was an API error\n";
         return {};
